@@ -22,58 +22,69 @@ type S3ObjectHeader interface {
 }
 
 type RunInput struct {
+	DryRun         bool
 	S3Bucket       string
 	S3Uploader     S3Uploader
 	S3ObjectHeader S3ObjectHeader
-	Targets        []ConfigTarget
+	Path           string
+	ZipDepth       int
+	OutPrefix      string
 }
 
 func Run(ctx context.Context, in *RunInput) error {
-	for _, t := range in.Targets {
-		objects, err := DirObjects(t.Path, t.ZipDepth)
-		if err != nil {
-			return fmt.Errorf("get objects: %w", err)
+	objects, err := DirObjects(in.Path, in.ZipDepth)
+	if err != nil {
+		return fmt.Errorf("get objects: %w", err)
+	}
+	slog.InfoContext(ctx, "Found %d objects in %s", len(objects), in.Path)
+
+	for _, object := range objects {
+		if err := runObject(ctx, in, object); err != nil {
+			return fmt.Errorf("object %q: %w", object, err)
 		}
-		slog.InfoContext(ctx, "Found %d objects in %s", len(objects), t.Path)
+	}
+	return nil
+}
 
-		for _, object := range objects {
-			hash, err := dirhash.HashDir(object, t.Path, dirhash.Hash1)
-			if err != nil {
-				return fmt.Errorf("computed hash dir: %w", err)
-			}
-			slog.InfoContext(ctx, "Hash %s: %s", object, hash)
+func runObject(ctx context.Context, in *RunInput, object string) error {
+	hash, err := dirhash.HashDir(object, in.Path, dirhash.Hash1)
+	if err != nil {
+		return fmt.Errorf("computed hash dir: %w", err)
+	}
 
-			s3Key := filepath.ToSlash(filepath.Join(t.OutPrefix, object))
-			head, err := in.S3ObjectHeader.HeadObjectWithContext(ctx, &s3.HeadObjectInput{
-				Bucket: &in.S3Bucket,
-				Key:    &s3Key,
-			})
-			if err != nil {
-				return fmt.Errorf("head object %q: %w", s3Key, err)
-			}
+	s3Key := filepath.ToSlash(filepath.Join(in.OutPrefix, object))
+	head, err := in.S3ObjectHeader.HeadObjectWithContext(ctx, &s3.HeadObjectInput{
+		Bucket: &in.S3Bucket,
+		Key:    &s3Key,
+	})
+	if err != nil {
+		return fmt.Errorf("head object: %w", err)
+	}
 
-			s3hash, ok := head.Metadata[MetadataKeyHashBeforeZip]
-			if !ok {
-				return fmt.Errorf("missing %s metadata in %q", MetadataKeyHashBeforeZip, s3Key)
-			}
-			if *s3hash == hash {
-				slog.InfoContext(ctx, "Already uploaded %q", object)
-				continue
-			}
+	s3hash, ok := head.Metadata[MetadataKeyHashBeforeZip]
+	if !ok {
+		return fmt.Errorf("missing %s metadata in %q", MetadataKeyHashBeforeZip, s3Key)
+	}
+	if *s3hash == hash {
+		slog.InfoContext(ctx, "Already uploaded %q", object)
+		return nil
+	}
 
-			slog.InfoContext(ctx, "Upload %q", object)
-			r := Zip(filepath.Join(t.Path, object))
-			_, err = in.S3Uploader.UploadWithContext(ctx, &s3manager.UploadInput{
-				Bucket:   &in.S3Bucket,
-				Key:      &object,
-				Body:     r,
-				Metadata: map[string]*string{MetadataKeyHashBeforeZip: &hash},
-			})
-			if err != nil {
-				return fmt.Errorf("upload %q: %w", object, err)
-			}
-		}
+	slog.InfoContext(ctx, "Upload %q", object)
+	if in.DryRun {
+		return nil
+	}
 
+	r := Zip(filepath.Join(in.Path, object))
+	defer r.Close()
+	_, err = in.S3Uploader.UploadWithContext(ctx, &s3manager.UploadInput{
+		Bucket:   &in.S3Bucket,
+		Key:      &s3Key,
+		Body:     r,
+		Metadata: map[string]*string{MetadataKeyHashBeforeZip: &hash},
+	})
+	if err != nil {
+		return fmt.Errorf("upload to s3: %w", err)
 	}
 	return nil
 }
