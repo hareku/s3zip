@@ -37,7 +37,7 @@ func Run(ctx context.Context, in *RunInput) error {
 	if err != nil {
 		return fmt.Errorf("get objects: %w", err)
 	}
-	slog.InfoContext(ctx, "Found %d objects in %s", len(objects), in.Path)
+	slog.InfoContext(ctx, fmt.Sprintf("Found %d objects in %s", len(objects), in.Path))
 
 	for _, object := range objects {
 		if err := runObject(ctx, in, object); err != nil {
@@ -48,7 +48,7 @@ func Run(ctx context.Context, in *RunInput) error {
 }
 
 func runObject(ctx context.Context, in *RunInput, object string) error {
-	hash, err := Hash(filepath.Join(in.Path, object))
+	hash, err := Hash(in.Path, object)
 	if err != nil {
 		return fmt.Errorf("compute hash: %w", err)
 	}
@@ -64,7 +64,7 @@ func runObject(ctx context.Context, in *RunInput, object string) error {
 			case s3.ErrCodeNoSuchBucket:
 				return fmt.Errorf("bucket %q does not exist", in.S3Bucket)
 			case s3.ErrCodeNoSuchKey:
-				// OK
+				slog.InfoContext(ctx, "Upload", "object", object, "current_hash", hash)
 			}
 		} else {
 			return fmt.Errorf("head object: %w", err)
@@ -75,12 +75,12 @@ func runObject(ctx context.Context, in *RunInput, object string) error {
 			return fmt.Errorf("missing %s metadata in %q: %+v", MetadataKeyHashBeforeZip, s3Key, head.Metadata)
 		}
 		if *s3hash == hash {
-			slog.InfoContext(ctx, "Already uploaded %q", object)
+			slog.InfoContext(ctx, "Already uploaded", "object", object)
 			return nil
 		}
+		slog.InfoContext(ctx, "Upload", "object", object, "uploaded_hash", *s3hash, "current_hash", hash)
 	}
 
-	slog.InfoContext(ctx, "Upload %q", object)
 	if in.DryRun {
 		return nil
 	}

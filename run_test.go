@@ -39,4 +39,5 @@ func TestRun(t *testing.T) {
 		OutPrefix:      "out-prefix",
 	})
 	require.NoError(t, err, "Run failed")
+	t.Fatal("Hello")
 }
