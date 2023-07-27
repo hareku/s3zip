@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 )
 
-func Zip(name, prefix string) io.ReadCloser {
+func Zip(name string) io.ReadCloser {
 	pr, pw := io.Pipe()
 	go func() {
 		zw := zip.NewWriter(pw)

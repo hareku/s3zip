@@ -3,6 +3,7 @@ package s3zip
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"
@@ -42,17 +43,18 @@ func Run(ctx context.Context, in *RunInput) error {
 			}
 			slog.InfoContext(ctx, "Hash %s: %s", object, hash)
 
+			s3Key := filepath.ToSlash(filepath.Join(t.OutPrefix, object))
 			head, err := in.S3ObjectHeader.HeadObjectWithContext(ctx, &s3.HeadObjectInput{
 				Bucket: &in.S3Bucket,
-				Key:    &object,
+				Key:    &s3Key,
 			})
 			if err != nil {
-				return fmt.Errorf("head object: %w", err)
+				return fmt.Errorf("head object %q: %w", s3Key, err)
 			}
 
 			s3hash, ok := head.Metadata[MetadataKeyHashBeforeZip]
 			if !ok {
-				return fmt.Errorf("missing %s header in %q", MetadataKeyHashBeforeZip, object)
+				return fmt.Errorf("missing %s metadata in %q", MetadataKeyHashBeforeZip, s3Key)
 			}
 			if *s3hash == hash {
 				slog.InfoContext(ctx, "Already uploaded %q", object)
@@ -60,7 +62,7 @@ func Run(ctx context.Context, in *RunInput) error {
 			}
 
 			slog.InfoContext(ctx, "Upload %q", object)
-			r := Zip(object, t.Path)
+			r := Zip(filepath.Join(t.Path, object))
 			_, err = in.S3Uploader.UploadWithContext(ctx, &s3manager.UploadInput{
 				Bucket:   &in.S3Bucket,
 				Key:      &object,

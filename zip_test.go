@@ -16,7 +16,7 @@ func TestZip(t *testing.T) {
 	})
 
 	t.Run("file", func(t *testing.T) {
-		r := Zip(filepath.Join(dir, "a.txt"), "")
+		r := Zip(filepath.Join(dir, "a.txt"))
 		defer r.Close()
 		written, err := io.Copy(io.Discard, r)
 		require.NoError(t, err)
@@ -24,7 +24,7 @@ func TestZip(t *testing.T) {
 	})
 
 	t.Run("directory", func(t *testing.T) {
-		r := Zip(dir, "")
+		r := Zip(dir)
 		defer r.Close()
 		written, err := io.Copy(io.Discard, r)
 		require.NoError(t, err)
