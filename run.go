@@ -39,10 +39,16 @@ type (
 	}
 )
 
-func Run(ctx context.Context, in *RunInput) error {
+type RunOutput struct {
+	Uploaded int
+	Deleted  int
+}
+
+func Run(ctx context.Context, in *RunInput) (*RunOutput, error) {
+	out := &RunOutput{}
 	objects, err := LocalObjects(in.Path, in.ZipDepth)
 	if err != nil {
-		return fmt.Errorf("get objects in %q: %w", in.Path, err)
+		return nil, fmt.Errorf("get objects in %q: %w", in.Path, err)
 	}
 	slog.InfoContext(ctx, fmt.Sprintf("Found %d objects in %q", len(objects), in.Path))
 
@@ -53,12 +59,12 @@ func Run(ctx context.Context, in *RunInput) error {
 	for _, object := range objects {
 		objectHash, err := Hash(in.Path, object)
 		if err != nil {
-			return fmt.Errorf("compute hash %q: %w", object, err)
+			return nil, fmt.Errorf("compute hash %q: %w", object, err)
 		}
 
 		shouldUpload, err := shouldUpload(ctx, in, object, objectHash)
 		if err != nil {
-			return fmt.Errorf("check should upload: %w", err)
+			return nil, fmt.Errorf("check should upload: %w", err)
 		}
 		if !shouldUpload {
 			continue
@@ -76,16 +82,19 @@ func Run(ctx context.Context, in *RunInput) error {
 		for i, v := range objectsToUpload {
 			slog.InfoContext(ctx, fmt.Sprintf("Uploading(%d/%d)", i+1, len(objectsToUpload)), "object", v.name)
 			if err := uploadObject(ctx, in, v.name, v.hash); err != nil {
-				return fmt.Errorf("upload %q: %w", v.name, err)
+				return nil, fmt.Errorf("upload %q: %w", v.name, err)
 			}
+			out.Uploaded++
 		}
 	}
 
-	if err := cleanUnusedObjects(ctx, in, objects); err != nil {
-		return fmt.Errorf("clean unused objects: %w", err)
+	deleted, err := cleanUnusedObjects(ctx, in, objects)
+	if err != nil {
+		return nil, fmt.Errorf("clean unused objects: %w", err)
 	}
+	out.Deleted = deleted
 
-	return nil
+	return out, nil
 }
 
 func shouldUpload(ctx context.Context, in *RunInput, object, objectHash string) (bool, error) {
@@ -136,7 +145,7 @@ func uploadObject(ctx context.Context, in *RunInput, object, objectHash string) 
 	return nil
 }
 
-func cleanUnusedObjects(ctx context.Context, in *RunInput, objects []string) error {
+func cleanUnusedObjects(ctx context.Context, in *RunInput, objects []string) (int, error) {
 	mp := make(map[string]struct{})
 	for _, v := range objects {
 		mp[makeS3Key(in.Path, in.OutPrefix, v)] = struct{}{}
@@ -158,13 +167,13 @@ func cleanUnusedObjects(ctx context.Context, in *RunInput, objects []string) err
 		return lastPage
 	})
 	if err != nil {
-		return fmt.Errorf("list objects: %w", err)
+		return 0, fmt.Errorf("list objects: %w", err)
 	}
 	if len(dels) == 0 {
-		return nil
+		return 0, nil
 	}
 	if in.DryRun {
-		return nil
+		return 0, nil
 	}
 	_, err = in.S3Service.DeleteObjectsWithContext(ctx, &s3.DeleteObjectsInput{
 		Bucket: &in.S3Bucket,
@@ -173,9 +182,9 @@ func cleanUnusedObjects(ctx context.Context, in *RunInput, objects []string) err
 		},
 	})
 	if err != nil {
-		return fmt.Errorf("delete objects: %w", err)
+		return 0, fmt.Errorf("delete objects: %w", err)
 	}
-	return nil
+	return len(dels), nil
 }
 
 func makeS3Key(localPath, outPrefix, object string) string {
