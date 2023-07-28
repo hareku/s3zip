@@ -7,21 +7,21 @@ import (
 	"strings"
 )
 
-func DirObjects(dir string, maxDepth int) ([]string, error) {
+func LocalObjects(path string, maxDepth int) ([]string, error) {
+	_, pref := filepath.Split(path)
+
 	var objects []string
-	dir = filepath.Clean(dir)
-	err := filepath.Walk(dir, func(file string, info os.FileInfo, err error) error {
+	path = filepath.Clean(path)
+	err := filepath.Walk(path, func(file string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
-		if !info.IsDir() && file == dir {
-			return fmt.Errorf("%s is not a directory", dir)
-		}
 
-		rel, err := filepath.Rel(dir, file)
+		rel, err := filepath.Rel(path, file)
 		if err != nil {
 			return fmt.Errorf("get relative path: %w", err)
 		}
+		rel = filepath.Join(pref, rel)
 
 		depth := strings.Count(rel, string(os.PathSeparator))
 		if depth > maxDepth {

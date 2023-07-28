@@ -13,12 +13,18 @@ type testFile struct {
 	content string
 }
 
-func setupTestDir(t *testing.T, files []testFile) string {
+func setupTestDir(t *testing.T, prefix string, files []testFile) string {
+	t.Helper()
+
 	tmpDir, err := os.MkdirTemp("", "")
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		os.RemoveAll(tmpDir)
 	})
+	t.Logf("Created tmp dir: %s", tmpDir)
+	if prefix != "" {
+		tmpDir = filepath.Join(tmpDir, prefix)
+	}
 
 	for _, v := range files {
 		require.NoError(t, os.MkdirAll(filepath.Join(tmpDir, filepath.Dir(v.path)), 0755))

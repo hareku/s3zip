@@ -10,7 +10,7 @@ import (
 )
 
 func TestZip(t *testing.T) {
-	dir := setupTestDir(t, []testFile{
+	dir := setupTestDir(t, "", []testFile{
 		{path: "a.txt", content: "a"},
 		{path: "b.txt", content: "b"},
 	})

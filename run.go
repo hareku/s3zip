@@ -40,7 +40,7 @@ type (
 )
 
 func Run(ctx context.Context, in *RunInput) error {
-	objects, err := DirObjects(in.Path, in.ZipDepth)
+	objects, err := LocalObjects(in.Path, in.ZipDepth)
 	if err != nil {
 		return fmt.Errorf("get objects: %w", err)
 	}
