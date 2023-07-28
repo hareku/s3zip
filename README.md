@@ -3,8 +3,9 @@
 # TODO
 
 - read config file
-- list directories for a target
-- compute hash of a directory before zip
+- list objects for a target
+- compute hash of a object before zip
   - if hash is same in s3 metadata, skip uploading
-- zip directory
+- zip object
 - upload to s3
+- delete other zip files in s3

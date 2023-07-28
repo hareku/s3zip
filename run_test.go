@@ -2,6 +2,8 @@ package s3zip
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -29,15 +31,19 @@ func TestRun(t *testing.T) {
 		S3ForcePathStyle: aws.Bool(true),
 	})
 
-	err := Run(context.Background(), &RunInput{
-		DryRun:         false,
-		S3Bucket:       "s3zip-test",
-		S3Uploader:     s3manager.NewUploaderWithClient(s3svc),
-		S3ObjectHeader: s3svc,
-		Path:           dir,
-		ZipDepth:       1,
-		OutPrefix:      "out-prefix",
-	})
-	require.NoError(t, err, "Run failed")
+	in := &RunInput{
+		S3Bucket:     "s3zip-test",
+		S3Uploader:   s3manager.NewUploaderWithClient(s3svc),
+		S3Service:    s3svc,
+		Path:         dir,
+		ZipDepth:     1,
+		OutPrefix:    "out-prefix",
+		StorageClass: s3.StorageClassStandard,
+	}
+	require.NoError(t, Run(context.Background(), in))
+
+	require.NoError(t, os.Remove(filepath.Join(dir, "a1.txt")))
+	require.NoError(t, Run(context.Background(), in))
+
 	t.Fatal("Hello")
 }
