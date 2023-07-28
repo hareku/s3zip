@@ -85,7 +85,7 @@ func TestRun(t *testing.T) {
 		"pref/target/baz.zip",
 	})
 
-	require.NoError(t, os.Remove(filepath.Join(dir, "target/a1.txt")))
+	require.NoError(t, os.Remove(filepath.Join(dir, "a1.txt")))
 	require.NoError(t, Run(context.Background(), in))
 	assertS3Objects(t, []string{
 		"pref/target/foo.zip",

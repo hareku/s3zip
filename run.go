@@ -42,7 +42,7 @@ type (
 func Run(ctx context.Context, in *RunInput) error {
 	objects, err := LocalObjects(in.Path, in.ZipDepth)
 	if err != nil {
-		return fmt.Errorf("get objects: %w", err)
+		return fmt.Errorf("get objects in %q: %w", in.Path, err)
 	}
 	slog.InfoContext(ctx, fmt.Sprintf("Found %d objects in %q", len(objects), in.Path))
 
@@ -89,9 +89,10 @@ func Run(ctx context.Context, in *RunInput) error {
 }
 
 func shouldUpload(ctx context.Context, in *RunInput, object, objectHash string) (bool, error) {
+	// _, pref := filepath.Split(path)
 	head, err := in.S3Service.HeadObjectWithContext(ctx, &s3.HeadObjectInput{
 		Bucket: &in.S3Bucket,
-		Key:    aws.String(makeS3Key(in.OutPrefix, object)),
+		Key:    aws.String(makeS3Key(in.Path, in.OutPrefix, object)),
 	})
 	if err != nil {
 		var aerr awserr.Error
@@ -124,7 +125,7 @@ func uploadObject(ctx context.Context, in *RunInput, object, objectHash string) 
 	defer r.Close()
 	_, err := in.S3Uploader.UploadWithContext(ctx, &s3manager.UploadInput{
 		Bucket:       &in.S3Bucket,
-		Key:          aws.String(makeS3Key(in.OutPrefix, object)),
+		Key:          aws.String(makeS3Key(in.Path, in.OutPrefix, object)),
 		Body:         r,
 		Metadata:     map[string]*string{MetadataKeyHashBeforeZip: &objectHash},
 		StorageClass: &in.StorageClass,
@@ -138,7 +139,7 @@ func uploadObject(ctx context.Context, in *RunInput, object, objectHash string) 
 func cleanUnusedObjects(ctx context.Context, in *RunInput, objects []string) error {
 	mp := make(map[string]struct{})
 	for _, v := range objects {
-		mp[makeS3Key(in.OutPrefix, v)] = struct{}{}
+		mp[makeS3Key(in.Path, in.OutPrefix, v)] = struct{}{}
 	}
 
 	dels := make([]*s3.ObjectIdentifier, 0)
@@ -177,6 +178,7 @@ func cleanUnusedObjects(ctx context.Context, in *RunInput, objects []string) err
 	return nil
 }
 
-func makeS3Key(outPrefix, object string) string {
-	return filepath.ToSlash(filepath.Join(outPrefix, object)) + ".zip"
+func makeS3Key(localPath, outPrefix, object string) string {
+	_, pref := filepath.Split(localPath)
+	return filepath.ToSlash(filepath.Join(outPrefix, pref, object)) + ".zip"
 }

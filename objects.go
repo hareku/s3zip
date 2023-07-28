@@ -8,7 +8,9 @@ import (
 )
 
 func LocalObjects(path string, maxDepth int) ([]string, error) {
-	_, pref := filepath.Split(path)
+	if maxDepth == 0 {
+		return []string{"."}, nil
+	}
 
 	var objects []string
 	path = filepath.Clean(path)
@@ -21,9 +23,8 @@ func LocalObjects(path string, maxDepth int) ([]string, error) {
 		if err != nil {
 			return fmt.Errorf("get relative path: %w", err)
 		}
-		rel = filepath.Join(pref, rel)
 
-		depth := strings.Count(rel, string(os.PathSeparator))
+		depth := strings.Count(rel, string(os.PathSeparator)) + 1
 		if depth > maxDepth {
 			return filepath.SkipDir // no more recursion
 		}
