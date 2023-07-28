@@ -55,7 +55,7 @@ func run() error {
 		if err != nil {
 			return fmt.Errorf("run %q: %w", t.Path, err)
 		}
-		log.Printf("Done %q: %v", t.Path, out)
+		log.Printf("Done %q: %+v", t.Path, out)
 	}
 	return nil
 }

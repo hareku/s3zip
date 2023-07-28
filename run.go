@@ -58,7 +58,7 @@ func Run(ctx context.Context, in *RunInput) (*RunOutput, error) {
 		hash string
 	}, 0, len(objects))
 	for _, object := range objects {
-		objectHash, err := Hash(in.Path, object)
+		objectHash, err := Hash(filepath.Join(in.Path, object))
 		if err != nil {
 			return nil, fmt.Errorf("compute hash %q: %w", object, err)
 		}
