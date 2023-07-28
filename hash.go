@@ -9,6 +9,8 @@ import (
 	"golang.org/x/mod/sumdb/dirhash"
 )
 
+// Hash returns a hash of the given file or directory.
+// This ignores file contents and only uses file names.
 func Hash(name string) (string, error) {
 	stat, err := os.Stat(name)
 	if err != nil {

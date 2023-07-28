@@ -7,6 +7,8 @@ import (
 	"strings"
 )
 
+// LocalObjects returns a list of relative paths to all files and directories.
+// maxDepth is the maximum depth of recursion.
 func LocalObjects(path string, maxDepth int) ([]string, error) {
 	if maxDepth == 0 {
 		return []string{"."}, nil

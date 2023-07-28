@@ -14,7 +14,7 @@ import (
 	"golang.org/x/exp/slog"
 )
 
-const MetadataKeyHashBeforeZip = "Hash-Before-Zip"
+const MetadataKeyHash = "S3zip-Hash"
 
 type (
 	S3Uploader interface {
@@ -99,7 +99,6 @@ func Run(ctx context.Context, in *RunInput) (*RunOutput, error) {
 }
 
 func shouldUpload(ctx context.Context, in *RunInput, object, objectHash string) (bool, error) {
-	// _, pref := filepath.Split(path)
 	head, err := in.S3Service.HeadObjectWithContext(ctx, &s3.HeadObjectInput{
 		Bucket: &in.S3Bucket,
 		Key:    aws.String(makeS3Key(in.Path, in.OutPrefix, object)),
@@ -111,22 +110,22 @@ func shouldUpload(ctx context.Context, in *RunInput, object, objectHash string) 
 			case s3.ErrCodeNoSuchBucket:
 				return false, fmt.Errorf("bucket %q does not exist", in.S3Bucket)
 			case s3.ErrCodeNoSuchKey, "NotFound":
-				slog.InfoContext(ctx, "Upload (new)", "object", object)
+				slog.InfoContext(ctx, "Upload (new)", "object", object, "s3-key", makeS3Key(in.Path, in.OutPrefix, object))
 				return true, nil
 			}
 		}
 		return false, fmt.Errorf("head object: %w", err)
 	}
 
-	s3hash, ok := head.Metadata[MetadataKeyHashBeforeZip]
+	s3hash, ok := head.Metadata[MetadataKeyHash]
 	if !ok {
-		return false, fmt.Errorf("missing %s metadata in s3: %+v", MetadataKeyHashBeforeZip, head.Metadata)
+		return false, fmt.Errorf("missing %s metadata in s3: %+v", MetadataKeyHash, head.Metadata)
 	}
 	if *s3hash == objectHash {
-		slog.InfoContext(ctx, "Skip (uploaded)", "object", object)
+		slog.InfoContext(ctx, "Skip (uploaded)", "object", object, "s3-key", makeS3Key(in.Path, in.OutPrefix, object))
 		return false, nil
 	}
-	slog.InfoContext(ctx, "Upload (changed)", "object", object)
+	slog.InfoContext(ctx, "Upload (changed)", "object", object, "s3-key", makeS3Key(in.Path, in.OutPrefix, object))
 	return true, nil
 }
 
@@ -137,7 +136,7 @@ func uploadObject(ctx context.Context, in *RunInput, object, objectHash string) 
 		Bucket:       &in.S3Bucket,
 		Key:          aws.String(makeS3Key(in.Path, in.OutPrefix, object)),
 		Body:         r,
-		Metadata:     map[string]*string{MetadataKeyHashBeforeZip: &objectHash},
+		Metadata:     map[string]*string{MetadataKeyHash: &objectHash},
 		StorageClass: &in.S3StorageClass,
 	})
 	if err != nil {

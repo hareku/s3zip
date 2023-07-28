@@ -116,42 +116,84 @@ func TestRun(t *testing.T) {
 		}
 	}
 
-	out, err := Run(context.Background(), in)
-	require.NoError(t, err)
-	assert.Equal(t, &RunOutput{
-		Uploaded: 3,
-		Deleted:  0,
-	}, out)
-	assertS3Objects(t, map[string][]testFile{
-		"pref/target/a1.txt.zip": {
-			{path: "a1.txt", content: "a1"},
-		},
-		"pref/target/foo.zip": {
-			{path: "b1.txt", content: "b1"},
-			{path: "b2.txt", content: "b2"},
-			{path: "bar/c1.txt", content: "c1"},
-		},
-		"pref/target/baz.zip": {
-			{path: "d1.txt", content: "d1"},
-		},
+	t.Run("upload", func(t *testing.T) {
+		out, err := Run(context.Background(), in)
+		require.NoError(t, err)
+		assert.Equal(t, &RunOutput{
+			Uploaded: 3,
+			Deleted:  0,
+		}, out)
+		assertS3Objects(t, map[string][]testFile{
+			"pref/target/a1.txt.zip": {
+				{path: "a1.txt", content: "a1"},
+			},
+			"pref/target/foo.zip": {
+				{path: "b1.txt", content: "b1"},
+				{path: "b2.txt", content: "b2"},
+				{path: "bar/c1.txt", content: "c1"},
+			},
+			"pref/target/baz.zip": {
+				{path: "d1.txt", content: "d1"},
+			},
+		})
 	})
 
-	require.NoError(t, os.Remove(filepath.Join(dir, "a1.txt")))
+	t.Run("delete", func(t *testing.T) {
+		require.NoError(t, os.Remove(filepath.Join(dir, "a1.txt")))
+		require.NoError(t, os.RemoveAll(filepath.Join(dir, "baz")))
 
-	out, err = Run(context.Background(), in)
-	require.NoError(t, err)
-	assert.Equal(t, &RunOutput{
-		Uploaded: 0,
-		Deleted:  1,
-	}, out)
-	assertS3Objects(t, map[string][]testFile{
-		"pref/target/foo.zip": {
-			{path: "b1.txt", content: "b1"},
-			{path: "b2.txt", content: "b2"},
-			{path: "bar/c1.txt", content: "c1"},
-		},
-		"pref/target/baz.zip": {
-			{path: "d1.txt", content: "d1"},
-		},
+		out, err := Run(context.Background(), in)
+		require.NoError(t, err)
+		assert.Equal(t, &RunOutput{
+			Uploaded: 0,
+			Deleted:  2,
+		}, out)
+		assertS3Objects(t, map[string][]testFile{
+			"pref/target/foo.zip": {
+				{path: "b1.txt", content: "b1"},
+				{path: "b2.txt", content: "b2"},
+				{path: "bar/c1.txt", content: "c1"},
+			},
+		})
+	})
+
+	t.Run("ignore file content", func(t *testing.T) {
+		f, err := os.Create(filepath.Join(dir, "foo/b1.txt"))
+		require.NoError(t, err)
+		_, err = f.Write([]byte("b1-2"))
+		require.NoError(t, err)
+		require.NoError(t, f.Close())
+
+		out, err := Run(context.Background(), in)
+		require.NoError(t, err)
+		assert.Equal(t, &RunOutput{
+			Uploaded: 0,
+			Deleted:  0,
+		}, out)
+		assertS3Objects(t, map[string][]testFile{
+			"pref/target/foo.zip": {
+				{path: "b1.txt", content: "b1"},
+				{path: "b2.txt", content: "b2"},
+				{path: "bar/c1.txt", content: "c1"},
+			},
+		})
+	})
+
+	t.Run("remove a file in zip", func(t *testing.T) {
+		require.NoError(t, os.Rename(filepath.Join(dir, "foo/b1.txt"), filepath.Join(dir, "foo/b1-2.txt")))
+
+		out, err := Run(context.Background(), in)
+		require.NoError(t, err)
+		assert.Equal(t, &RunOutput{
+			Uploaded: 1,
+			Deleted:  0,
+		}, out)
+		assertS3Objects(t, map[string][]testFile{
+			"pref/target/foo.zip": {
+				{path: "b1-2.txt", content: "b1-2"},
+				{path: "b2.txt", content: "b2"},
+				{path: "bar/c1.txt", content: "c1"},
+			},
+		})
 	})
 }
