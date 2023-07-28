@@ -26,7 +26,11 @@ func Zip(name string) io.ReadCloser {
 			if err != nil {
 				return fmt.Errorf("get relative path: %w", err)
 			}
-			zw2, err := zw.Create(rel)
+			if rel == "." {
+				rel = filepath.Base(name)
+			}
+
+			zw2, err := zw.Create(filepath.ToSlash(rel))
 			if err != nil {
 				return fmt.Errorf("create zip file: %w", err)
 			}
