@@ -8,17 +8,21 @@ import (
 )
 
 type Config struct {
-	Targets []ConfigTarget
+	DryRun  bool           `yaml:"dry_run"`
+	S3      ConfigS3       `yaml:"s3"`
+	Targets []ConfigTarget `yaml:"targets"`
 }
 
 type ConfigS3 struct {
-	Bucket string
+	Region       string `yaml:"region"`
+	Bucket       string `yaml:"bucket"`
+	StorageClass string `yaml:"storage_class"`
 }
 
 type ConfigTarget struct {
-	Path      string
-	ZipDepth  int
-	OutPrefix string
+	Path      string `yaml:"path"`
+	ZipDepth  int    `yaml:"zip_depth"`
+	OutPrefix string `yaml:"out_prefix"`
 }
 
 func ReadConfig(path string) (*Config, error) {

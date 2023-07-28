@@ -28,14 +28,14 @@ type (
 	}
 
 	RunInput struct {
-		DryRun       bool
-		S3Bucket     string
-		S3Uploader   S3Uploader
-		S3Service    S3Service
-		Path         string
-		ZipDepth     int
-		OutPrefix    string
-		StorageClass string
+		DryRun         bool
+		S3Bucket       string
+		S3Uploader     S3Uploader
+		S3Service      S3Service
+		Path           string
+		ZipDepth       int
+		OutPrefix      string
+		S3StorageClass string
 	}
 )
 
@@ -51,6 +51,7 @@ func Run(ctx context.Context, in *RunInput) (*RunOutput, error) {
 		return nil, fmt.Errorf("get objects in %q: %w", in.Path, err)
 	}
 	slog.InfoContext(ctx, fmt.Sprintf("Found %d objects in %q", len(objects), in.Path))
+	slog.InfoContext(ctx, "Checking whether objects should be uploaded or not")
 
 	objectsToUpload := make([]struct {
 		name string
@@ -64,7 +65,7 @@ func Run(ctx context.Context, in *RunInput) (*RunOutput, error) {
 
 		shouldUpload, err := shouldUpload(ctx, in, object, objectHash)
 		if err != nil {
-			return nil, fmt.Errorf("check should upload: %w", err)
+			return nil, fmt.Errorf("check should upload %q: %w", object, err)
 		}
 		if !shouldUpload {
 			continue
@@ -137,7 +138,7 @@ func uploadObject(ctx context.Context, in *RunInput, object, objectHash string) 
 		Key:          aws.String(makeS3Key(in.Path, in.OutPrefix, object)),
 		Body:         r,
 		Metadata:     map[string]*string{MetadataKeyHashBeforeZip: &objectHash},
-		StorageClass: &in.StorageClass,
+		StorageClass: &in.S3StorageClass,
 	})
 	if err != nil {
 		return fmt.Errorf("upload to s3: %w", err)
@@ -188,6 +189,5 @@ func cleanUnusedObjects(ctx context.Context, in *RunInput, objects []string) (in
 }
 
 func makeS3Key(localPath, outPrefix, object string) string {
-	_, pref := filepath.Split(localPath)
-	return filepath.ToSlash(filepath.Join(outPrefix, pref, object)) + ".zip"
+	return filepath.ToSlash(filepath.Join(outPrefix, filepath.Base(localPath), object)) + ".zip"
 }

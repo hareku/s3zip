@@ -30,7 +30,10 @@ func Zip(name string) io.ReadCloser {
 				rel = filepath.Base(name)
 			}
 
-			zw2, err := zw.Create(filepath.ToSlash(rel))
+			zw2, err := zw.CreateHeader(&zip.FileHeader{
+				Name:   filepath.ToSlash(rel),
+				Method: zip.Store,
+			})
 			if err != nil {
 				return fmt.Errorf("create zip file: %w", err)
 			}

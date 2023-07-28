@@ -35,13 +35,13 @@ func TestRun(t *testing.T) {
 		S3ForcePathStyle: aws.Bool(true),
 	})
 	in := &RunInput{
-		S3Bucket:     "s3zip-test",
-		S3Uploader:   s3manager.NewUploaderWithClient(s3svc),
-		S3Service:    s3svc,
-		Path:         dir,
-		ZipDepth:     1,
-		OutPrefix:    "pref",
-		StorageClass: s3.StorageClassStandard,
+		S3Bucket:       "s3zip-test",
+		S3Uploader:     s3manager.NewUploaderWithClient(s3svc),
+		S3Service:      s3svc,
+		Path:           dir,
+		ZipDepth:       1,
+		OutPrefix:      "pref",
+		S3StorageClass: s3.StorageClassStandard,
 	}
 	defer func() { // remove all objects in the bucket/prefix
 		keys := make([]*s3.ObjectIdentifier, 0)
@@ -65,7 +65,6 @@ func TestRun(t *testing.T) {
 
 	assertS3Objects := func(t *testing.T, wantObjects map[string][]testFile) {
 		t.Helper()
-		downloader := s3manager.NewDownloaderWithClient(s3svc)
 
 		got := make([]string, 0)
 		require.NoError(t, s3svc.ListObjectsV2Pages(&s3.ListObjectsV2Input{
@@ -84,9 +83,10 @@ func TestRun(t *testing.T) {
 		sort.Strings(wantKeys)
 		require.Equal(t, wantKeys, got)
 
+		dl := s3manager.NewDownloaderWithClient(s3svc)
 		for k, wantFiles := range wantObjects {
 			buf := aws.NewWriteAtBuffer([]byte{})
-			_, err := downloader.Download(buf, &s3.GetObjectInput{
+			_, err := dl.Download(buf, &s3.GetObjectInput{
 				Bucket: aws.String(in.S3Bucket),
 				Key:    aws.String(k),
 			})
@@ -97,8 +97,10 @@ func TestRun(t *testing.T) {
 				f, err := zf.Open()
 				require.NoError(t, err)
 				content := make([]byte, zf.UncompressedSize64)
-				_, err = f.Read(content)
-				require.ErrorIs(t, err, io.EOF, "Failed to read file %q in %q (bytes: %d)", zf.Name, k, zf.UncompressedSize64)
+				wrote, err := f.Read(content)
+				if err != nil {
+					require.ErrorIs(t, err, io.EOF, "Failed to read file %q in %q (full size: %d, wrote: %d)", zf.Name, k, zf.UncompressedSize64, wrote)
+				}
 				require.NoError(t, f.Close())
 
 				var ok bool
@@ -109,7 +111,7 @@ func TestRun(t *testing.T) {
 						break
 					}
 				}
-				assert.True(t, ok, "file %s not found in zip", zf.Name)
+				assert.True(t, ok, "file %s not found in: %v", zf.Name, wantFiles)
 			}
 		}
 	}
