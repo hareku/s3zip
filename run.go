@@ -60,26 +60,41 @@ func Run(ctx context.Context, in *RunInput) (*RunOutput, error) {
 		name string
 		hash string
 	}, 0, len(objects))
-	for _, object := range objects {
-		objectHash, err := Hash(filepath.Join(in.Path, object))
-		if err != nil {
-			return nil, fmt.Errorf("compute hash %q: %w", object, err)
-		}
+	{
+		eg, ctx := errgroup.WithContext(ctx)
+		eg.SetLimit(10)
+		var mu sync.Mutex
+		for _, object := range objects {
+			object := object
+			eg.Go(func() error {
+				objectHash, err := Hash(filepath.Join(in.Path, object))
+				if err != nil {
+					return fmt.Errorf("compute hash %q: %w", object, err)
+				}
 
-		shouldUpload, err := shouldUpload(ctx, in, object, objectHash)
-		if err != nil {
-			return nil, fmt.Errorf("check should upload %q: %w", object, err)
+				shouldUpload, err := shouldUpload(ctx, in, object, objectHash)
+				if err != nil {
+					return fmt.Errorf("check should upload %q: %w", object, err)
+				}
+				if !shouldUpload {
+					return nil
+				}
+
+				mu.Lock()
+				defer mu.Unlock()
+				objectsToUpload = append(objectsToUpload, struct {
+					name string
+					hash string
+				}{
+					name: object,
+					hash: objectHash,
+				})
+				return nil
+			})
 		}
-		if !shouldUpload {
-			continue
+		if err := eg.Wait(); err != nil {
+			return nil, fmt.Errorf("check should upload objects: %w", err)
 		}
-		objectsToUpload = append(objectsToUpload, struct {
-			name string
-			hash string
-		}{
-			name: object,
-			hash: objectHash,
-		})
 	}
 
 	if !in.DryRun {
