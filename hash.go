@@ -1,30 +1,44 @@
 package s3zip
 
 import (
-	"bytes"
+	"crypto/sha256"
+	"encoding/base64"
+	"errors"
 	"fmt"
-	"io"
 	"os"
+	"path/filepath"
+	"sort"
+	"strings"
 
 	"golang.org/x/mod/sumdb/dirhash"
 )
 
 // Hash returns a hash of the given file or directory.
-// This ignores file contents and only uses file names.
+// This only uses the file size and name for performance.
 func Hash(name string) (string, error) {
 	stat, err := os.Stat(name)
 	if err != nil {
 		return "", fmt.Errorf("stat: %w", err)
 	}
-
-	files := []string{name}
+	files := []string{"."}
 	if stat.IsDir() {
 		files, err = dirhash.DirFiles(name, "")
 		if err != nil {
 			return "", fmt.Errorf("dir files: %w", err)
 		}
 	}
-	return dirhash.Hash1(files, func(s string) (io.ReadCloser, error) {
-		return io.NopCloser(bytes.NewReader(nil)), nil // don't read file contents for performance
-	})
+	sort.Strings(files)
+
+	h := sha256.New()
+	for _, file := range files {
+		if strings.Contains(file, "\n") {
+			return "", errors.New("filenames with newlines are not supported")
+		}
+		s, err := os.Stat(filepath.Join(name, file))
+		if err != nil {
+			return "", err
+		}
+		fmt.Fprintf(h, "%d  %s\n", s.Size(), file)
+	}
+	return "s3zip:" + base64.StdEncoding.EncodeToString(h.Sum(nil)), nil
 }

@@ -8,14 +8,14 @@ import (
 )
 
 // LocalObjects returns a list of relative paths to all files and directories.
-// maxDepth is the maximum depth of recursion.
+// maxDepth is the maximum depth of recursion, 0 means no recursion.
 func LocalObjects(path string, maxDepth int) ([]string, error) {
 	if maxDepth == 0 {
 		return []string{"."}, nil
 	}
 
-	var objects []string
 	path = filepath.Clean(path)
+	var objects []string
 	err := filepath.Walk(path, func(file string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err

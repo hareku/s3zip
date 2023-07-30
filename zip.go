@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 )
 
-// Zip returns a zip file of the given directory or file.
+// Zip returns an uncompressed zip file of the given directory or file.
 func Zip(name string) io.ReadCloser {
 	pr, pw := io.Pipe()
 	go func() {

@@ -4,11 +4,13 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"sort"
 	"testing"
+	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
@@ -28,14 +30,26 @@ func TestRun(t *testing.T) {
 		{path: "baz/d1.txt", content: "d1"},
 	})
 
+	bucketName := fmt.Sprintf("s3zip-test-%d", time.Now().UnixNano())
 	s3svc := s3.New(session.Must(session.NewSession()), &aws.Config{
 		Endpoint:         aws.String("http://localhost:9000"),
 		Region:           aws.String("ap-northeast-1"),
 		Credentials:      credentials.NewStaticCredentials("minioadmin", "minioadmin", ""),
 		S3ForcePathStyle: aws.Bool(true),
 	})
+	_, err := s3svc.CreateBucket(&s3.CreateBucketInput{
+		Bucket: aws.String(bucketName),
+	})
+	require.NoError(t, err)
+	defer func() {
+		_, err := s3svc.DeleteBucket(&s3.DeleteBucketInput{
+			Bucket: aws.String(bucketName),
+		})
+		require.NoError(t, err)
+	}()
+
 	in := &RunInput{
-		S3Bucket:       "s3zip-test",
+		S3Bucket:       bucketName,
 		S3Uploader:     s3manager.NewUploaderWithClient(s3svc),
 		S3Service:      s3svc,
 		Path:           dir,
@@ -160,7 +174,7 @@ func TestRun(t *testing.T) {
 	t.Run("ignore file content", func(t *testing.T) {
 		f, err := os.Create(filepath.Join(dir, "foo/b1.txt"))
 		require.NoError(t, err)
-		_, err = f.Write([]byte("b1-2"))
+		_, err = f.Write([]byte("bb"))
 		require.NoError(t, err)
 		require.NoError(t, f.Close())
 
@@ -180,7 +194,7 @@ func TestRun(t *testing.T) {
 	})
 
 	t.Run("remove a file in zip", func(t *testing.T) {
-		require.NoError(t, os.Rename(filepath.Join(dir, "foo/b1.txt"), filepath.Join(dir, "foo/b1-2.txt")))
+		require.NoError(t, os.Rename(filepath.Join(dir, "foo/b2.txt"), filepath.Join(dir, "foo/b2-2.txt")))
 
 		out, err := Run(context.Background(), in)
 		require.NoError(t, err)
@@ -190,8 +204,8 @@ func TestRun(t *testing.T) {
 		}, out)
 		assertS3Objects(t, map[string][]testFile{
 			"pref/target/foo.zip": {
-				{path: "b1-2.txt", content: "b1-2"},
-				{path: "b2.txt", content: "b2"},
+				{path: "b1.txt", content: "bb"},
+				{path: "b2-2.txt", content: "b2"},
 				{path: "bar/c1.txt", content: "c1"},
 			},
 		})

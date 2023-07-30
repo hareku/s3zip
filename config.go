@@ -25,8 +25,8 @@ type ConfigTarget struct {
 	OutPrefix string `yaml:"out_prefix"`
 }
 
-func ReadConfig(path string) (*Config, error) {
-	f, err := os.Open(path)
+func ReadConfig(name string) (*Config, error) {
+	f, err := os.Open(name)
 	if err != nil {
 		return nil, fmt.Errorf("open config file: %w", err)
 	}

@@ -44,6 +44,7 @@ type RunOutput struct {
 	Deleted  int
 }
 
+// Run zip and upload files in the given path.
 func Run(ctx context.Context, in *RunInput) (*RunOutput, error) {
 	out := &RunOutput{}
 	objects, err := LocalObjects(in.Path, in.ZipDepth)
@@ -136,6 +137,7 @@ func uploadObject(ctx context.Context, in *RunInput, object, objectHash string) 
 		Bucket:       &in.S3Bucket,
 		Key:          aws.String(makeS3Key(in.Path, in.OutPrefix, object)),
 		Body:         r,
+		ContentType:  aws.String("application/zip"),
 		Metadata:     map[string]*string{MetadataKeyHash: &objectHash},
 		StorageClass: &in.S3StorageClass,
 	})

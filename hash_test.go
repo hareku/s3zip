@@ -25,13 +25,13 @@ func TestHash(t *testing.T) {
 
 	f, err := os.Create(filepath.Join(dir, "a1.txt"))
 	require.NoError(t, err)
-	_, err = f.WriteString("a1-2")
+	_, err = f.WriteString("aa")
 	require.NoError(t, err)
 	require.NoError(t, f.Close())
 
 	got3, err := Hash(dir)
 	require.NoError(t, err)
-	require.Equal(t, got, got3, "Hash should not change if file content is changed")
+	require.Equal(t, got, got3, "Hash should not change if file content is changed but its size is the same")
 
 	require.NoError(t, os.RemoveAll(filepath.Join(dir, "baz")))
 	got4, err := Hash(dir)
