@@ -20,6 +20,7 @@ func Hash(name string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("stat: %w", err)
 	}
+
 	files := []string{"."}
 	if stat.IsDir() {
 		files, err = dirhash.DirFiles(name, "")
@@ -38,7 +39,11 @@ func Hash(name string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		fmt.Fprintf(h, "%d  %s\n", s.Size(), file)
+		if file == "." {
+			fmt.Fprintf(h, "%d  %s\n", s.Size(), filepath.Join(name, file))
+		} else {
+			fmt.Fprintf(h, "%d  %s\n", s.Size(), file)
+		}
 	}
 	return "s3zip:" + base64.StdEncoding.EncodeToString(h.Sum(nil)), nil
 }
