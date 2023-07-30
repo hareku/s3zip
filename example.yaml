@@ -1,9 +1,0 @@
-s3:
-  region: us-west-2
-  bucket: my-bucket
-  storage_class: STANDARD
-
-targets:
-  - path: C://Users/Me/Documents
-    zip_depth: 1
-    out_prefix: my-bucket

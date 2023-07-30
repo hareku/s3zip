@@ -8,11 +8,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// testFile represents a file to be created in a temporary directory.
 type testFile struct {
 	path    string
 	content string
 }
 
+// setupTestDir creates a temporary directory and returns its path.
 func setupTestDir(t *testing.T, prefix string, files []testFile) string {
 	t.Helper()
 
