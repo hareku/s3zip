@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"sync"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
@@ -12,6 +13,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"
 	"golang.org/x/exp/slog"
+	"golang.org/x/sync/errgroup"
 )
 
 const MetadataKeyHash = "S3zip-Hash"
@@ -81,12 +83,26 @@ func Run(ctx context.Context, in *RunInput) (*RunOutput, error) {
 	}
 
 	if !in.DryRun {
-		for i, v := range objectsToUpload {
-			slog.InfoContext(ctx, fmt.Sprintf("Uploading(%d/%d)", i+1, len(objectsToUpload)), "object", v.name)
-			if err := uploadObject(ctx, in, v.name, v.hash); err != nil {
-				return nil, fmt.Errorf("upload %q: %w", v.name, err)
-			}
-			out.Uploaded++
+		eg, ctx := errgroup.WithContext(ctx)
+		eg.SetLimit(5)
+		var mu sync.Mutex
+		for _, v := range objectsToUpload {
+			v := v
+			eg.Go(func() error {
+				defer func() {
+					mu.Lock()
+					defer mu.Unlock()
+					out.Uploaded++
+					slog.InfoContext(ctx, fmt.Sprintf("Uploaded(%d/%d)", out.Uploaded, len(objectsToUpload)))
+				}()
+				if err := uploadObject(ctx, in, v.name, v.hash); err != nil {
+					return fmt.Errorf("upload %q: %w", v.name, err)
+				}
+				return nil
+			})
+		}
+		if err := eg.Wait(); err != nil {
+			return nil, fmt.Errorf("upload objects: %w", err)
 		}
 	}
 
