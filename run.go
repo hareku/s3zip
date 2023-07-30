@@ -35,7 +35,7 @@ type (
 		S3Uploader     S3Uploader
 		S3Service      S3Service
 		Path           string
-		ZipDepth       int
+		MaxZipDepth    int
 		OutPrefix      string
 		S3StorageClass string
 	}
@@ -49,7 +49,7 @@ type RunOutput struct {
 // Run zip and upload files in the given path.
 func Run(ctx context.Context, in *RunInput) (*RunOutput, error) {
 	out := &RunOutput{}
-	objects, err := LocalObjects(in.Path, in.ZipDepth)
+	objects, err := LocalObjects(in.Path, in.MaxZipDepth)
 	if err != nil {
 		return nil, fmt.Errorf("get objects in %q: %w", in.Path, err)
 	}

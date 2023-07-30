@@ -49,7 +49,7 @@ func run() error {
 			S3Uploader:     uploader,
 			S3Service:      s3svc,
 			Path:           t.Path,
-			ZipDepth:       t.ZipDepth,
+			MaxZipDepth:    t.MaxZipDepth,
 			OutPrefix:      t.OutPrefix,
 		})
 		if err != nil {

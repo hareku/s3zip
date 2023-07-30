@@ -53,7 +53,7 @@ func TestRun(t *testing.T) {
 		S3Uploader:     s3manager.NewUploaderWithClient(s3svc),
 		S3Service:      s3svc,
 		Path:           dir,
-		ZipDepth:       1,
+		MaxZipDepth:    1,
 		OutPrefix:      "pref",
 		S3StorageClass: s3.StorageClassStandard,
 	}

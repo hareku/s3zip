@@ -20,9 +20,9 @@ type ConfigS3 struct {
 }
 
 type ConfigTarget struct {
-	Path      string `yaml:"path"`
-	ZipDepth  int    `yaml:"zip_depth"`
-	OutPrefix string `yaml:"out_prefix"`
+	Path        string `yaml:"path"`
+	MaxZipDepth int    `yaml:"max_zip_depth"`
+	OutPrefix   string `yaml:"out_prefix"`
 }
 
 func ReadConfig(name string) (*Config, error) {
