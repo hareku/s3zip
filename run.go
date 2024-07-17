@@ -154,7 +154,7 @@ func shouldUpload(ctx context.Context, in *RunInput, object, objectHash string) 
 		return false, fmt.Errorf("missing %s metadata in s3: %+v", MetadataKeyHash, head.Metadata)
 	}
 	if *s3hash == objectHash {
-		slog.InfoContext(ctx, "Skip (uploaded)", "object", object, "s3-key", makeS3Key(in.Path, in.OutPrefix, object))
+		slog.DebugContext(ctx, "Skip (uploaded)", "object", object, "s3-key", makeS3Key(in.Path, in.OutPrefix, object))
 		return false, nil
 	}
 	slog.InfoContext(ctx, "Upload (changed)", "object", object, "s3-key", makeS3Key(in.Path, in.OutPrefix, object))
