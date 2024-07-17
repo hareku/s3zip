@@ -1,13 +1,13 @@
 module github.com/hareku/s3zip
 
-go 1.20
+go 1.22
 
 require (
-	github.com/aws/aws-sdk-go v1.44.309
-	github.com/stretchr/testify v1.8.4
-	golang.org/x/exp v0.0.0-20230725093048-515e97ebf090
-	golang.org/x/mod v0.12.0
-	golang.org/x/sync v0.0.0-20220722155255-886fb9371eb4
+	github.com/aws/aws-sdk-go v1.54.19
+	github.com/stretchr/testify v1.9.0
+	golang.org/x/exp v0.0.0-20240716175740-e3f259677ff7
+	golang.org/x/mod v0.19.0
+	golang.org/x/sync v0.7.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
