@@ -98,19 +98,10 @@ func Run(ctx context.Context, in *RunInput) (*RunOutput, error) {
 	slog.InfoContext(ctx, "Found objects to upload", "len", len(objectsToUpload))
 
 	if !in.DryRun {
-		eg, ctx := errgroup.WithContext(ctx)
-		eg.SetLimit(5)
 		for _, v := range objectsToUpload {
-			v := v
-			eg.Go(func() error {
-				if err := uploadObject(ctx, in, v.name, v.hash); err != nil {
-					return fmt.Errorf("upload %q: %w", v.name, err)
-				}
-				return nil
-			})
-		}
-		if err := eg.Wait(); err != nil {
-			return nil, fmt.Errorf("upload objects: %w", err)
+			if err := uploadObject(ctx, in, v.name, v.hash); err != nil {
+				return nil, fmt.Errorf("upload %q: %w", v.name, err)
+			}
 		}
 	}
 
