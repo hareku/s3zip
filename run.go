@@ -42,20 +42,19 @@ type (
 )
 
 type RunOutput struct {
-	Uploaded int
-	Deleted  int
+	Upload int
+	Delete int
 }
 
 // Run zip and upload files in the given path.
 func Run(ctx context.Context, in *RunInput) (*RunOutput, error) {
-	out := &RunOutput{}
 	objects, err := LocalObjects(in.Path, in.MaxZipDepth)
 	if err != nil {
 		return nil, fmt.Errorf("get objects in %q: %w", in.Path, err)
 	}
-	slog.InfoContext(ctx, fmt.Sprintf("Found %d objects in %q", len(objects), in.Path))
-	slog.InfoContext(ctx, "Checking whether objects should be uploaded or not")
+	slog.InfoContext(ctx, "Listed objects", "len", len(objects))
 
+	slog.InfoContext(ctx, "Checking whether objects should be uploaded or not")
 	objectsToUpload := make([]struct {
 		name string
 		hash string
@@ -96,20 +95,14 @@ func Run(ctx context.Context, in *RunInput) (*RunOutput, error) {
 			return nil, fmt.Errorf("check should upload objects: %w", err)
 		}
 	}
+	slog.InfoContext(ctx, "Found objects to upload", "len", len(objectsToUpload))
 
 	if !in.DryRun {
 		eg, ctx := errgroup.WithContext(ctx)
 		eg.SetLimit(5)
-		var mu sync.Mutex
 		for _, v := range objectsToUpload {
 			v := v
 			eg.Go(func() error {
-				defer func() {
-					mu.Lock()
-					defer mu.Unlock()
-					out.Uploaded++
-					slog.InfoContext(ctx, fmt.Sprintf("Uploaded(%d/%d)", out.Uploaded, len(objectsToUpload)))
-				}()
 				if err := uploadObject(ctx, in, v.name, v.hash); err != nil {
 					return fmt.Errorf("upload %q: %w", v.name, err)
 				}
@@ -125,9 +118,10 @@ func Run(ctx context.Context, in *RunInput) (*RunOutput, error) {
 	if err != nil {
 		return nil, fmt.Errorf("clean unused objects: %w", err)
 	}
-	out.Deleted = deleted
-
-	return out, nil
+	return &RunOutput{
+		Upload: len(objectsToUpload),
+		Delete: deleted,
+	}, nil
 }
 
 func shouldUpload(ctx context.Context, in *RunInput, object, objectHash string) (bool, error) {
@@ -142,7 +136,7 @@ func shouldUpload(ctx context.Context, in *RunInput, object, objectHash string) 
 			case s3.ErrCodeNoSuchBucket:
 				return false, fmt.Errorf("bucket %q does not exist", in.S3Bucket)
 			case s3.ErrCodeNoSuchKey, "NotFound":
-				slog.InfoContext(ctx, "Upload (new)", "object", object, "s3-key", makeS3Key(in.Path, in.OutPrefix, object))
+				slog.InfoContext(ctx, "To upload (new)", "object", object, "s3-key", makeS3Key(in.Path, in.OutPrefix, object))
 				return true, nil
 			}
 		}
@@ -157,24 +151,26 @@ func shouldUpload(ctx context.Context, in *RunInput, object, objectHash string) 
 		slog.DebugContext(ctx, "Skip (uploaded)", "object", object, "s3-key", makeS3Key(in.Path, in.OutPrefix, object))
 		return false, nil
 	}
-	slog.InfoContext(ctx, "Upload (changed)", "object", object, "s3-key", makeS3Key(in.Path, in.OutPrefix, object))
+	slog.InfoContext(ctx, "To upload (changed)", "object", object, "s3-key", makeS3Key(in.Path, in.OutPrefix, object))
 	return true, nil
 }
 
 func uploadObject(ctx context.Context, in *RunInput, object, objectHash string) error {
 	r := Zip(filepath.Join(in.Path, object))
 	defer r.Close()
-	_, err := in.S3Uploader.UploadWithContext(ctx, &s3manager.UploadInput{
+	upIn := &s3manager.UploadInput{
 		Bucket:       &in.S3Bucket,
 		Key:          aws.String(makeS3Key(in.Path, in.OutPrefix, object)),
 		Body:         r,
 		ContentType:  aws.String("application/zip"),
 		Metadata:     map[string]*string{MetadataKeyHash: &objectHash},
 		StorageClass: &in.S3StorageClass,
-	})
+	}
+	_, err := in.S3Uploader.UploadWithContext(ctx, upIn)
 	if err != nil {
 		return fmt.Errorf("upload to s3: %w", err)
 	}
+	slog.InfoContext(ctx, "Uploaded", "object", object, "s3-key", *upIn.Key)
 	return nil
 }
 
@@ -191,7 +187,7 @@ func cleanUnusedObjects(ctx context.Context, in *RunInput, objects []string) (in
 	}, func(page *s3.ListObjectsV2Output, lastPage bool) bool {
 		for _, obj := range page.Contents {
 			if _, ok := mp[*obj.Key]; !ok {
-				slog.InfoContext(ctx, "Delete", "s3-key", *obj.Key)
+				slog.InfoContext(ctx, "To delete", "s3-key", *obj.Key)
 				dels = append(dels, &s3.ObjectIdentifier{
 					Key: obj.Key,
 				})
@@ -205,17 +201,17 @@ func cleanUnusedObjects(ctx context.Context, in *RunInput, objects []string) (in
 	if len(dels) == 0 {
 		return 0, nil
 	}
-	if in.DryRun {
-		return 0, nil
-	}
-	_, err = in.S3Service.DeleteObjectsWithContext(ctx, &s3.DeleteObjectsInput{
-		Bucket: &in.S3Bucket,
-		Delete: &s3.Delete{
-			Objects: dels,
-		},
-	})
-	if err != nil {
-		return 0, fmt.Errorf("delete objects: %w", err)
+	if !in.DryRun {
+		_, err = in.S3Service.DeleteObjectsWithContext(ctx, &s3.DeleteObjectsInput{
+			Bucket: &in.S3Bucket,
+			Delete: &s3.Delete{
+				Objects: dels,
+			},
+		})
+		if err != nil {
+			return 0, fmt.Errorf("delete objects: %w", err)
+		}
+		slog.InfoContext(ctx, "Deleted objects", "len", len(dels))
 	}
 	return len(dels), nil
 }

@@ -134,8 +134,8 @@ func TestRun(t *testing.T) {
 		out, err := Run(context.Background(), in)
 		require.NoError(t, err)
 		assert.Equal(t, &RunOutput{
-			Uploaded: 3,
-			Deleted:  0,
+			Upload: 3,
+			Delete: 0,
 		}, out)
 		assertS3Objects(t, map[string][]testFile{
 			"pref/target/a1.txt.zip": {
@@ -159,8 +159,8 @@ func TestRun(t *testing.T) {
 		out, err := Run(context.Background(), in)
 		require.NoError(t, err)
 		assert.Equal(t, &RunOutput{
-			Uploaded: 0,
-			Deleted:  2,
+			Upload: 0,
+			Delete: 2,
 		}, out)
 		assertS3Objects(t, map[string][]testFile{
 			"pref/target/foo.zip": {
@@ -181,8 +181,8 @@ func TestRun(t *testing.T) {
 		out, err := Run(context.Background(), in)
 		require.NoError(t, err)
 		assert.Equal(t, &RunOutput{
-			Uploaded: 0,
-			Deleted:  0,
+			Upload: 0,
+			Delete: 0,
 		}, out)
 		assertS3Objects(t, map[string][]testFile{
 			"pref/target/foo.zip": {
@@ -199,8 +199,8 @@ func TestRun(t *testing.T) {
 		out, err := Run(context.Background(), in)
 		require.NoError(t, err)
 		assert.Equal(t, &RunOutput{
-			Uploaded: 1,
-			Deleted:  0,
+			Upload: 1,
+			Delete: 0,
 		}, out)
 		assertS3Objects(t, map[string][]testFile{
 			"pref/target/foo.zip": {
