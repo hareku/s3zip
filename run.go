@@ -156,8 +156,10 @@ func shouldUpload(ctx context.Context, in *RunInput, object, objectHash string) 
 }
 
 func uploadObject(ctx context.Context, in *RunInput, object, objectHash string) error {
+	slog.InfoContext(ctx, "Zipping", "object", object)
 	r := Zip(filepath.Join(in.Path, object))
 	defer r.Close()
+
 	upIn := &s3manager.UploadInput{
 		Bucket:       &in.S3Bucket,
 		Key:          aws.String(makeS3Key(in.Path, in.OutPrefix, object)),
@@ -166,6 +168,7 @@ func uploadObject(ctx context.Context, in *RunInput, object, objectHash string) 
 		Metadata:     map[string]*string{MetadataKeyHash: &objectHash},
 		StorageClass: &in.S3StorageClass,
 	}
+	slog.InfoContext(ctx, "Uploading", "object", object, "s3-key", *upIn.Key)
 	_, err := in.S3Uploader.UploadWithContext(ctx, upIn)
 	if err != nil {
 		return fmt.Errorf("upload to s3: %w", err)
