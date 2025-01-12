@@ -39,8 +39,7 @@ func run() error {
 		Region: aws.String(conf.S3.Region),
 	})
 	uploader := s3manager.NewUploaderWithClient(s3svc, func(u *s3manager.Uploader) {
-		u.PartSize = 128 * 1024 * 1024 // 64MB per part
-		slog.InfoContext(ctx, "Set s3manager.Uploader.PartSize", "size", u.PartSize, "default", s3manager.DefaultUploadPartSize)
+		u.PartSize = 64 * 1024 * 1024
 	})
 
 	for _, t := range conf.Targets {
