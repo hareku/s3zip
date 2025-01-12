@@ -19,8 +19,6 @@ s3zip path/to/config.yaml
 ## Config
 
 ```yaml
-dry_run: true
-
 s3:
   region: us-west-2
   bucket: my-bucket
