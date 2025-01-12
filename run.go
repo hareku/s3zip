@@ -7,12 +7,13 @@ import (
 	"path/filepath"
 	"sync"
 
+	"log/slog"
+
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/request"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"
-	"golang.org/x/exp/slog"
 	"golang.org/x/sync/errgroup"
 )
 
