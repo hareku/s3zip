@@ -4,12 +4,11 @@ s3zip zip files and upload to Amazon S3.
 
 ## Motivation
 
-Ref: https://aws.amazon.com/s3/pricing/
+Amazon S3 charges for Metadata and API requests. `s3zip` aims to reduce them.
 
-- Reduce the metadata:
-  - For each object that is stored in S3 Glacier, Amazon S3 adds 40 KB of chargeable overhead for metadata, with 8 KB charged at S3 Standard rates and 32 KB charged at S3 Glacier Flexible Retrieval or S3 Deep Archive rates.
-- Reduce API requests:
-  - Amazon S3 charges for API requests. e.g. PUT, COPY, POST, LIST requests (per 1,000 requests).
+> For each object that is stored in the S3 Glacier Flexible Retrieval and S3 Glacier Deep Archive storage classes, AWS charges for 40 KB of additional metadata for each archived object, with 8 KB charged at S3 Standard rates and 32 KB charged at S3 Glacier Flexible Retrieval or S3 Deep Archive rates.
+>
+> https://aws.amazon.com/s3/pricing
 
 ## Usage
 
