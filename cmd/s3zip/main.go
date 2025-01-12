@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"log"
 	"os"
 	"os/signal"
 
@@ -79,7 +78,7 @@ func run() error {
 		if err != nil {
 			return fmt.Errorf("run %q: %w", t.Path, err)
 		}
-		log.Printf("Done %q: %+v", t.Path, out)
+		slog.InfoContext(ctx, "Done", "target", t, "output", out)
 	}
 	return nil
 }
