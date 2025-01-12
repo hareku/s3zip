@@ -8,7 +8,6 @@ import (
 )
 
 type Config struct {
-	DryRun  bool           `yaml:"dry_run"`
 	S3      ConfigS3       `yaml:"s3"`
 	Targets []ConfigTarget `yaml:"targets"`
 }

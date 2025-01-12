@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"log"
 	"os"
@@ -15,6 +16,12 @@ import (
 	"golang.org/x/exp/slog"
 )
 
+var (
+	configFlag = flag.String("config", "", "config file path")
+	dryFlag    = flag.Bool("dry", false, "dry run")
+	debugFlag  = flag.Bool("debug", false, "debug mode")
+)
+
 func main() {
 	if err := run(); err != nil {
 		slog.Error(err.Error())
@@ -26,14 +33,29 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 
-	if len(os.Args) < 2 {
-		return fmt.Errorf("usage: %s <config file>", os.Args[0])
+	flag.Parse()
+	{
+		logLevel := slog.LevelInfo
+		if *debugFlag {
+			logLevel = slog.LevelDebug
+		}
+		slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
+			Level: logLevel,
+		})))
 	}
-	conf, err := s3zip.ReadConfig(os.Args[1])
+	if *configFlag == "" {
+		return fmt.Errorf("config flag is required")
+	}
+	if *dryFlag {
+		slog.InfoContext(ctx, "Dry run is enabled")
+	}
+	slog.InfoContext(ctx, "Start", "config", *configFlag)
+
+	conf, err := s3zip.ReadConfig(*configFlag)
 	if err != nil {
-		return fmt.Errorf("read config[%s]: %w", os.Args[1], err)
+		return fmt.Errorf("read config: %w", err)
 	}
-	slog.InfoContext(ctx, fmt.Sprintf("Loaded config: %+v", conf))
+	slog.DebugContext(ctx, fmt.Sprintf("Loaded config: %+v", conf))
 
 	s3svc := s3.New(session.Must(session.NewSession()), &aws.Config{
 		Region: aws.String(conf.S3.Region),
@@ -45,7 +67,7 @@ func run() error {
 	for _, t := range conf.Targets {
 		slog.InfoContext(ctx, "Start", "target", t)
 		out, err := s3zip.Run(ctx, &s3zip.RunInput{
-			DryRun:         conf.DryRun,
+			DryRun:         *dryFlag,
 			S3Bucket:       conf.S3.Bucket,
 			S3StorageClass: conf.S3.StorageClass,
 			S3Uploader:     uploader,
