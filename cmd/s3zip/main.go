@@ -21,6 +21,12 @@ var (
 	debugFlag  = flag.Bool("debug", false, "debug mode")
 )
 
+var (
+	version = "dev"
+	commit  = "none"
+	date    = "unknown"
+)
+
 func main() {
 	if err := run(); err != nil {
 		slog.Error(err.Error())
@@ -42,14 +48,16 @@ func run() error {
 			Level: logLevel,
 		})))
 	}
+	slog.InfoContext(ctx, "s3zip", "version", version, "commit", commit, "date", date)
+
 	if *configFlag == "" {
 		return fmt.Errorf("config flag is required")
 	}
 	if *dryFlag {
 		slog.InfoContext(ctx, "Dry run is enabled")
 	}
-	slog.InfoContext(ctx, "Start", "config", *configFlag)
 
+	slog.InfoContext(ctx, "Reading config", "config", *configFlag)
 	conf, err := s3zip.ReadConfig(*configFlag)
 	if err != nil {
 		return fmt.Errorf("read config: %w", err)
