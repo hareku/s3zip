@@ -29,26 +29,30 @@ var (
 )
 
 func main() {
+	flag.Parse()
+	setupLogger()
+
 	if err := run(); err != nil {
 		slog.Error(err.Error())
 		os.Exit(1)
 	}
 }
 
-func run() error {
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
-	defer stop()
-
-	flag.Parse()
-	{
-		logLevel := slog.LevelInfo
-		if *debugFlag {
-			logLevel = slog.LevelDebug
-		}
-		slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
-			Level: logLevel,
-		})))
+func setupLogger() {
+	level := slog.LevelInfo
+	if *debugFlag {
+		level = slog.LevelDebug
 	}
+
+	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
+		Level: level,
+	})))
+}
+
+func run() error {
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer cancel()
+
 	slog.InfoContext(ctx, "s3zip", "version", version, "commit", commit, "date", date)
 
 	if *configFlag == "" {
@@ -58,12 +62,12 @@ func run() error {
 		slog.InfoContext(ctx, "Dry run is enabled")
 	}
 
-	slog.InfoContext(ctx, "Reading config", "config", *configFlag)
+	slog.InfoContext(ctx, "Loading config", "path", *configFlag)
 	conf, err := s3zip.ReadConfig(*configFlag)
 	if err != nil {
 		return fmt.Errorf("read config: %w", err)
 	}
-	slog.DebugContext(ctx, fmt.Sprintf("Loaded config: %+v", conf))
+	slog.InfoContext(ctx, "Loaded config", "targets_count", len(conf.Targets))
 
 	s3svc := s3.New(session.Must(session.NewSession()), &aws.Config{
 		Region: aws.String(conf.S3.Region),
