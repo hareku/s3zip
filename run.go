@@ -22,6 +22,7 @@ import (
 
 const (
 	DefaultMetadataStoreKey = "s3zip-metadata.pb"
+	DefaultConcurrency      = 10
 )
 
 type (
@@ -62,6 +63,8 @@ type (
 		path        string
 		maxZipDepth int
 		outPrefix   string
+
+		concurrency int
 	}
 )
 
@@ -82,6 +85,8 @@ func newRunClient(in *RunInput) *runClient {
 		path:        in.Path,
 		maxZipDepth: in.MaxZipDepth,
 		outPrefix:   in.OutPrefix,
+
+		concurrency: DefaultConcurrency,
 	}
 
 	if c.metadataStoreKey == "" {
@@ -96,21 +101,19 @@ func Run(ctx context.Context, in *RunInput) (*RunOutput, error) {
 }
 
 func (c *runClient) run(ctx context.Context) (*RunOutput, error) {
-	if err := c.loadMetadataStore(ctx); err != nil {
-		return nil, fmt.Errorf("load metadata store: %w", err)
-	}
-	slog.InfoContext(ctx, "Loaded metadata store", "len", len(c.metadataStore.Metadata))
-
 	objects, err := LocalObjects(c.path, c.maxZipDepth)
 	if err != nil {
-		return nil, fmt.Errorf("get objects in %q: %w", c.path, err)
+		return nil, fmt.Errorf("list local objects: %w", err)
 	}
 	slog.InfoContext(ctx, "Listed objects", "len", len(objects))
 
+	if err := c.loadMetadataStore(ctx); err != nil {
+		return nil, fmt.Errorf("load metadata store: %w", err)
+	}
 	if !c.dryRun {
 		defer func() {
-			timeout := 10 * time.Second
-			slog.InfoContext(ctx, "Saving metadata store", "timeout", timeout)
+			timeout := 30 * time.Second
+			slog.DebugContext(ctx, "Saving metadata store", "timeout", timeout)
 
 			ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), timeout)
 			defer cancel()
@@ -121,43 +124,11 @@ func (c *runClient) run(ctx context.Context) (*RunOutput, error) {
 		}()
 	}
 
-	slog.InfoContext(ctx, "Checking whether objects should be uploaded or not")
-	objectsToUpload := make([]ObjectToUpload, 0, len(objects))
-	{
-		eg, ctx := errgroup.WithContext(ctx)
-		eg.SetLimit(10)
-		for _, object := range objects {
-			object := object // capture range variable
-			eg.Go(func() error {
-				if ctx.Err() != nil {
-					return ctx.Err()
-				}
-
-				objectHash, err := Hash(filepath.Join(c.path, object))
-				if err != nil {
-					return fmt.Errorf("compute hash %q: %w", object, err)
-				}
-
-				c.mu.Lock()
-				defer c.mu.Unlock()
-
-				key := makeS3Key(c.path, c.outPrefix, object)
-				if m, ok := c.metadataStore.Metadata[key]; ok && m.Hash == objectHash {
-					return nil
-				}
-
-				objectsToUpload = append(objectsToUpload, ObjectToUpload{
-					Name: object,
-					Hash: objectHash,
-				})
-				return nil
-			})
-		}
-		if err := eg.Wait(); err != nil {
-			return nil, fmt.Errorf("check should upload objects: %w", err)
-		}
+	objectsToUpload, err := c.listObjectsToUpload(ctx, objects)
+	if err != nil {
+		return nil, fmt.Errorf("list objects to upload: %w", err)
 	}
-	slog.InfoContext(ctx, "Found objects to upload", "len", len(objectsToUpload))
+	slog.InfoContext(ctx, "Listed objects to upload", "len", len(objectsToUpload))
 
 	if !c.dryRun {
 		for _, v := range objectsToUpload {
@@ -173,25 +144,62 @@ func (c *runClient) run(ctx context.Context) (*RunOutput, error) {
 		}
 	}
 
-	deleted, err := c.cleanUnusedObjects(ctx, objects)
+	deletedLen, err := c.cleanUnusedObjects(ctx, objects)
 	if err != nil {
 		return nil, fmt.Errorf("clean unused objects: %w", err)
 	}
 	return &RunOutput{
 		Upload: len(objectsToUpload),
-		Delete: deleted,
+		Delete: deletedLen,
 	}, nil
 }
 
+func (c *runClient) listObjectsToUpload(ctx context.Context, objects []string) ([]ObjectToUpload, error) {
+	objectsToUpload := make([]ObjectToUpload, 0, len(objects))
+
+	eg, ctx := errgroup.WithContext(ctx)
+	eg.SetLimit(c.concurrency)
+
+	for _, object := range objects {
+		eg.Go(func() error {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+
+			objectHash, err := Hash(filepath.Join(c.path, object))
+			if err != nil {
+				return fmt.Errorf("compute hash %q: %w", object, err)
+			}
+			key := makeS3Key(c.path, c.outPrefix, object)
+
+			c.mu.Lock()
+			defer c.mu.Unlock()
+
+			if m, ok := c.metadataStore.Metadata[key]; ok && m.Hash == objectHash {
+				return nil
+			}
+			objectsToUpload = append(objectsToUpload, ObjectToUpload{
+				Name: object,
+				Hash: objectHash,
+			})
+			return nil
+		})
+	}
+
+	if err := eg.Wait(); err != nil {
+		return nil, err
+	}
+	return objectsToUpload, nil
+}
+
 func (c *runClient) loadMetadataStore(ctx context.Context) error {
-	slog.InfoContext(ctx, "Loading metadata store", "key", c.metadataStoreKey)
+	slog.DebugContext(ctx, "Loading metadata store", "key", c.metadataStoreKey)
 
 	out, err := c.s3Service.GetObjectWithContext(ctx, &s3.GetObjectInput{
 		Bucket: &c.s3Bucket,
 		Key:    aws.String(c.metadataStoreKey),
 	})
 	if err != nil {
-		// return empty metadata store if not found
 		var aerr awserr.Error
 		if errors.As(err, &aerr) && aerr.Code() == s3.ErrCodeNoSuchKey {
 			slog.InfoContext(ctx, "Metadata store not found, creating a new one")
@@ -215,6 +223,8 @@ func (c *runClient) loadMetadataStore(ctx context.Context) error {
 	}
 
 	c.metadataStore = &s
+	slog.InfoContext(ctx, "Loaded metadata store", "len", len(c.metadataStore.Metadata))
+
 	return nil
 }
 
