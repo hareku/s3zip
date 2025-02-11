@@ -79,14 +79,15 @@ func run() error {
 	for _, t := range conf.Targets {
 		slog.InfoContext(ctx, "Start", "target", t)
 		out, err := s3zip.Run(ctx, &s3zip.RunInput{
-			DryRun:         *dryFlag,
-			S3Bucket:       conf.S3.Bucket,
-			S3StorageClass: conf.S3.StorageClass,
-			S3Uploader:     uploader,
-			S3Service:      s3svc,
-			Path:           t.Path,
-			MaxZipDepth:    t.MaxZipDepth,
-			OutPrefix:      t.OutPrefix,
+			DryRun:           *dryFlag,
+			S3Bucket:         conf.S3.Bucket,
+			S3StorageClass:   conf.S3.StorageClass,
+			S3Uploader:       uploader,
+			S3Service:        s3svc,
+			MetadataStoreKey: conf.Metadata,
+			Path:             t.Path,
+			MaxZipDepth:      t.MaxZipDepth,
+			OutPrefix:        t.OutPrefix,
 		})
 		if err != nil {
 			return fmt.Errorf("run %q: %w", t.Path, err)

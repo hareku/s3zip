@@ -1,4 +1,4 @@
-.PHONY: build release
+.PHONY: build release gen
 
 test:
 	go test ./...
@@ -8,3 +8,6 @@ build:
 
 release:
 	goreleaser release --clean
+
+gen:
+	protoc -I="." --go_out=. --go_opt=module=hareku/s3zip proto/metadata.proto

@@ -41,21 +41,38 @@ func TestRun(t *testing.T) {
 		Bucket: aws.String(bucketName),
 	})
 	require.NoError(t, err)
-	defer func() {
+	t.Cleanup(func() {
+		keys := make([]*string, 0)
+		require.NoError(t, s3svc.ListObjectsV2Pages(&s3.ListObjectsV2Input{
+			Bucket: aws.String(bucketName),
+		}, func(output *s3.ListObjectsV2Output, lastPage bool) bool {
+			for _, object := range output.Contents {
+				keys = append(keys, object.Key)
+			}
+			return lastPage
+		}))
+		for _, key := range keys {
+			_, err := s3svc.DeleteObject(&s3.DeleteObjectInput{
+				Bucket: aws.String(bucketName),
+				Key:    key,
+			})
+			require.NoError(t, err, "delete object %q", *key)
+		}
 		_, err := s3svc.DeleteBucket(&s3.DeleteBucketInput{
 			Bucket: aws.String(bucketName),
 		})
 		require.NoError(t, err)
-	}()
+	})
 
 	in := &RunInput{
-		S3Bucket:       bucketName,
-		S3Uploader:     s3manager.NewUploaderWithClient(s3svc),
-		S3Service:      s3svc,
-		Path:           dir,
-		MaxZipDepth:    1,
-		OutPrefix:      "pref",
-		S3StorageClass: s3.StorageClassStandard,
+		S3Bucket:         bucketName,
+		S3Uploader:       s3manager.NewUploaderWithClient(s3svc),
+		S3Service:        s3svc,
+		Path:             dir,
+		MaxZipDepth:      1,
+		OutPrefix:        "pref",
+		MetadataStoreKey: "metadata.pb",
+		S3StorageClass:   s3.StorageClassStandard,
 	}
 	defer func() { // remove all objects in the bucket/prefix
 		keys := make([]*s3.ObjectIdentifier, 0)
@@ -83,6 +100,7 @@ func TestRun(t *testing.T) {
 		got := make([]string, 0)
 		require.NoError(t, s3svc.ListObjectsV2Pages(&s3.ListObjectsV2Input{
 			Bucket: aws.String(in.S3Bucket),
+			Prefix: aws.String(in.OutPrefix),
 		}, func(output *s3.ListObjectsV2Output, lastPage bool) bool {
 			for _, object := range output.Contents {
 				got = append(got, *object.Key)

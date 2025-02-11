@@ -1,44 +1,36 @@
 package s3zip
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"log/slog"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
-	"github.com/aws/aws-sdk-go/aws/request"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"
 	"golang.org/x/sync/errgroup"
+	"google.golang.org/protobuf/proto"
 )
 
-const MetadataKeyHash = "S3zip-Hash"
-
 type (
-	S3Uploader interface {
-		UploadWithContext(ctx context.Context, input *s3manager.UploadInput, options ...func(*s3manager.Uploader)) (*s3manager.UploadOutput, error)
-	}
-
-	S3Service interface {
-		HeadObjectWithContext(ctx context.Context, input *s3.HeadObjectInput, options ...request.Option) (*s3.HeadObjectOutput, error)
-		ListObjectsV2PagesWithContext(ctx context.Context, input *s3.ListObjectsV2Input, fn func(*s3.ListObjectsV2Output, bool) bool, options ...request.Option) error
-		DeleteObjectsWithContext(ctx context.Context, input *s3.DeleteObjectsInput, options ...request.Option) (*s3.DeleteObjectsOutput, error)
-	}
-
 	RunInput struct {
-		DryRun         bool
-		S3Bucket       string
-		S3Uploader     S3Uploader
-		S3Service      S3Service
-		Path           string
-		MaxZipDepth    int
-		OutPrefix      string
-		S3StorageClass string
+		DryRun           bool
+		S3Bucket         string
+		S3Uploader       *s3manager.Uploader
+		S3Service        *s3.S3
+		MetadataStoreKey string
+		Path             string
+		MaxZipDepth      int
+		OutPrefix        string
+		S3StorageClass   string
 	}
 )
 
@@ -49,45 +41,68 @@ type RunOutput struct {
 
 // Run zip and upload files in the given path.
 func Run(ctx context.Context, in *RunInput) (*RunOutput, error) {
+	if in.MetadataStoreKey == "" {
+		return nil, fmt.Errorf("metadata store key is required")
+	}
+
 	objects, err := LocalObjects(in.Path, in.MaxZipDepth)
 	if err != nil {
 		return nil, fmt.Errorf("get objects in %q: %w", in.Path, err)
 	}
 	slog.InfoContext(ctx, "Listed objects", "len", len(objects))
 
+	metadataStore, err := loadMetadataStore(ctx, in)
+	if err != nil {
+		return nil, fmt.Errorf("load metadata store: %w", err)
+	}
+
+	if !in.DryRun {
+		defer func() {
+			timeout := 10 * time.Second
+			slog.InfoContext(ctx, "Saving metadata store", "timeout", timeout)
+
+			ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), timeout)
+			defer cancel()
+			if err := saveMetadataStore(ctx, in, metadataStore); err != nil {
+				slog.ErrorContext(ctx, "save metadata store", "error", err)
+			}
+		}()
+	}
+
 	slog.InfoContext(ctx, "Checking whether objects should be uploaded or not")
 	objectsToUpload := make([]struct {
 		name string
-		hash string
 	}, 0, len(objects))
 	{
 		eg, ctx := errgroup.WithContext(ctx)
 		eg.SetLimit(10)
 		var mu sync.Mutex
 		for _, object := range objects {
-			object := object
 			eg.Go(func() error {
+				if ctx.Err() != nil {
+					return ctx.Err()
+				}
+
 				objectHash, err := Hash(filepath.Join(in.Path, object))
 				if err != nil {
 					return fmt.Errorf("compute hash %q: %w", object, err)
 				}
 
-				shouldUpload, err := shouldUpload(ctx, in, object, objectHash)
-				if err != nil {
-					return fmt.Errorf("check should upload %q: %w", object, err)
-				}
-				if !shouldUpload {
-					return nil
-				}
-
 				mu.Lock()
 				defer mu.Unlock()
+
+				key := makeS3Key(in.Path, in.OutPrefix, object)
+				if m, ok := metadataStore.Metadata[key]; ok && m.Hash == objectHash {
+					return nil
+				}
+				metadataStore.Metadata[key] = &Metadata{
+					Hash: objectHash,
+				}
+
 				objectsToUpload = append(objectsToUpload, struct {
 					name string
-					hash string
 				}{
 					name: object,
-					hash: objectHash,
 				})
 				return nil
 			})
@@ -100,7 +115,7 @@ func Run(ctx context.Context, in *RunInput) (*RunOutput, error) {
 
 	if !in.DryRun {
 		for _, v := range objectsToUpload {
-			if err := uploadObject(ctx, in, v.name, v.hash); err != nil {
+			if err := uploadObject(ctx, in, v.name); err != nil {
 				return nil, fmt.Errorf("upload %q: %w", v.name, err)
 			}
 		}
@@ -116,38 +131,58 @@ func Run(ctx context.Context, in *RunInput) (*RunOutput, error) {
 	}, nil
 }
 
-func shouldUpload(ctx context.Context, in *RunInput, object, objectHash string) (bool, error) {
-	head, err := in.S3Service.HeadObjectWithContext(ctx, &s3.HeadObjectInput{
+func loadMetadataStore(ctx context.Context, in *RunInput) (*MetadataStore, error) {
+	slog.InfoContext(ctx, "Loading metadata store", "key", in.MetadataStoreKey)
+
+	out, err := in.S3Service.GetObjectWithContext(ctx, &s3.GetObjectInput{
 		Bucket: &in.S3Bucket,
-		Key:    aws.String(makeS3Key(in.Path, in.OutPrefix, object)),
+		Key:    aws.String(in.MetadataStoreKey),
 	})
 	if err != nil {
+		// return empty metadata store if not found
 		var aerr awserr.Error
-		if errors.As(err, &aerr) {
-			switch aerr.Code() {
-			case s3.ErrCodeNoSuchBucket:
-				return false, fmt.Errorf("bucket %q does not exist", in.S3Bucket)
-			case s3.ErrCodeNoSuchKey, "NotFound":
-				slog.InfoContext(ctx, "To upload (new)", "object", object, "s3-key", makeS3Key(in.Path, in.OutPrefix, object))
-				return true, nil
-			}
+		if errors.As(err, &aerr) && aerr.Code() == s3.ErrCodeNoSuchKey {
+			slog.InfoContext(ctx, "Metadata store not found, creating a new one")
+			return &MetadataStore{
+				Metadata: make(map[string]*Metadata),
+			}, nil
 		}
-		return false, fmt.Errorf("head object: %w", err)
+
+		return nil, fmt.Errorf("get metadata from s3: %w", err)
 	}
 
-	s3hash, ok := head.Metadata[MetadataKeyHash]
-	if !ok {
-		return false, fmt.Errorf("missing %s metadata in s3: %+v", MetadataKeyHash, head.Metadata)
+	b, err := io.ReadAll(out.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read body: %w", err)
 	}
-	if *s3hash == objectHash {
-		slog.DebugContext(ctx, "Skip (uploaded)", "object", object, "s3-key", makeS3Key(in.Path, in.OutPrefix, object))
-		return false, nil
+
+	var s MetadataStore
+	if err := proto.Unmarshal(b, &s); err != nil {
+		return nil, fmt.Errorf("unmarshal: %w", err)
 	}
-	slog.InfoContext(ctx, "To upload (changed)", "object", object, "s3-key", makeS3Key(in.Path, in.OutPrefix, object))
-	return true, nil
+	return &s, nil
 }
 
-func uploadObject(ctx context.Context, in *RunInput, object, objectHash string) error {
+func saveMetadataStore(ctx context.Context, in *RunInput, s *MetadataStore) error {
+	b, err := proto.Marshal(s)
+	if err != nil {
+		return fmt.Errorf("marshal: %w", err)
+	}
+
+	_, err = in.S3Uploader.UploadWithContext(ctx, &s3manager.UploadInput{
+		Bucket:       &in.S3Bucket,
+		Key:          aws.String(in.MetadataStoreKey),
+		Body:         aws.ReadSeekCloser(io.NopCloser(bytes.NewReader(b))),
+		ContentType:  aws.String("application/protobuf"),
+		StorageClass: aws.String(s3.StorageClassStandard),
+	})
+	if err != nil {
+		return fmt.Errorf("put object: %w", err)
+	}
+	return nil
+}
+
+func uploadObject(ctx context.Context, in *RunInput, object string) error {
 	slog.InfoContext(ctx, "Zipping", "object", object)
 	r := Zip(filepath.Join(in.Path, object))
 	defer r.Close()
@@ -157,7 +192,6 @@ func uploadObject(ctx context.Context, in *RunInput, object, objectHash string) 
 		Key:          aws.String(makeS3Key(in.Path, in.OutPrefix, object)),
 		Body:         r,
 		ContentType:  aws.String("application/zip"),
-		Metadata:     map[string]*string{MetadataKeyHash: &objectHash},
 		StorageClass: &in.S3StorageClass,
 	}
 	slog.InfoContext(ctx, "Uploading", "object", object, "s3-key", *upIn.Key)

@@ -1,0 +1,11 @@
+syntax = "proto3";
+package s3zip;
+option go_package = "hareku/s3zip";
+
+message Metadata {
+  string hash = 1;
+}
+
+message MetadataStore {
+  map<string, Metadata> metadata = 1;
+}

@@ -8,8 +8,9 @@ import (
 )
 
 type Config struct {
-	S3      ConfigS3       `yaml:"s3"`
-	Targets []ConfigTarget `yaml:"targets"`
+	S3       ConfigS3       `yaml:"s3"`
+	Metadata string         `yaml:"metadata"`
+	Targets  []ConfigTarget `yaml:"targets"`
 }
 
 type ConfigS3 struct {
