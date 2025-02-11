@@ -66,7 +66,6 @@ func TestRun(t *testing.T) {
 
 	in := &RunInput{
 		S3Bucket:         bucketName,
-		S3Uploader:       s3manager.NewUploaderWithClient(s3svc),
 		S3Service:        s3svc,
 		Path:             dir,
 		MaxZipDepth:      1,

@@ -12,7 +12,6 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
-	"github.com/aws/aws-sdk-go/service/s3/s3manager"
 	"github.com/hareku/s3zip"
 )
 
@@ -72,9 +71,6 @@ func run() error {
 	s3svc := s3.New(session.Must(session.NewSession()), &aws.Config{
 		Region: aws.String(conf.S3.Region),
 	})
-	uploader := s3manager.NewUploaderWithClient(s3svc, func(u *s3manager.Uploader) {
-		u.PartSize = 64 * 1024 * 1024
-	})
 
 	for i, t := range conf.Targets {
 		slog.InfoContext(ctx, "Start", "i", i, "target", t)
@@ -82,7 +78,6 @@ func run() error {
 			DryRun:           *dryFlag,
 			S3Bucket:         conf.S3.Bucket,
 			S3StorageClass:   conf.S3.StorageClass,
-			S3Uploader:       uploader,
 			S3Service:        s3svc,
 			MetadataStoreKey: conf.Metadata,
 			Path:             t.Path,
