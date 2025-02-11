@@ -60,6 +60,7 @@ func Run(ctx context.Context, in *RunInput) (*RunOutput, error) {
 	if err != nil {
 		return nil, fmt.Errorf("load metadata store: %w", err)
 	}
+	slog.InfoContext(ctx, "Loaded metadata store", "len", len(metadataStore.Metadata))
 
 	if !in.DryRun {
 		defer func() {
