@@ -72,6 +72,7 @@ func Run(ctx context.Context, in *RunInput) (*RunOutput, error) {
 			if err := saveMetadataStore(ctx, in, metadataStore); err != nil {
 				slog.ErrorContext(ctx, "save metadata store", "error", err)
 			}
+			slog.InfoContext(ctx, "Saved metadata store")
 		}()
 	}
 

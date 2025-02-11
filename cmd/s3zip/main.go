@@ -76,9 +76,9 @@ func run() error {
 		u.PartSize = 64 * 1024 * 1024
 	})
 
-	for _, t := range conf.Targets {
-		slog.InfoContext(ctx, "Start", "target", t)
-		out, err := s3zip.Run(ctx, &s3zip.RunInput{
+	for i, t := range conf.Targets {
+		slog.InfoContext(ctx, "Start", "i", i, "target", t)
+		result, err := s3zip.Run(ctx, &s3zip.RunInput{
 			DryRun:           *dryFlag,
 			S3Bucket:         conf.S3.Bucket,
 			S3StorageClass:   conf.S3.StorageClass,
@@ -90,9 +90,9 @@ func run() error {
 			OutPrefix:        t.OutPrefix,
 		})
 		if err != nil {
-			return fmt.Errorf("run %q: %w", t.Path, err)
+			return fmt.Errorf("run: %w", err)
 		}
-		slog.InfoContext(ctx, "Done", "target", t, "output", out)
+		slog.InfoContext(ctx, "Done", "result", result)
 	}
 	return nil
 }
