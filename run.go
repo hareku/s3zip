@@ -39,6 +39,11 @@ type RunOutput struct {
 	Delete int
 }
 
+type ObjectToUpload struct {
+	Name string
+	Hash string
+}
+
 // Run zip and upload files in the given path.
 func Run(ctx context.Context, in *RunInput) (*RunOutput, error) {
 	if in.MetadataStoreKey == "" {
@@ -70,9 +75,7 @@ func Run(ctx context.Context, in *RunInput) (*RunOutput, error) {
 	}
 
 	slog.InfoContext(ctx, "Checking whether objects should be uploaded or not")
-	objectsToUpload := make([]struct {
-		name string
-	}, 0, len(objects))
+	objectsToUpload := make([]ObjectToUpload, 0, len(objects))
 	{
 		eg, ctx := errgroup.WithContext(ctx)
 		eg.SetLimit(10)
@@ -95,14 +98,10 @@ func Run(ctx context.Context, in *RunInput) (*RunOutput, error) {
 				if m, ok := metadataStore.Metadata[key]; ok && m.Hash == objectHash {
 					return nil
 				}
-				metadataStore.Metadata[key] = &Metadata{
-					Hash: objectHash,
-				}
 
-				objectsToUpload = append(objectsToUpload, struct {
-					name string
-				}{
-					name: object,
+				objectsToUpload = append(objectsToUpload, ObjectToUpload{
+					Name: object,
+					Hash: objectHash,
 				})
 				return nil
 			})
@@ -114,10 +113,17 @@ func Run(ctx context.Context, in *RunInput) (*RunOutput, error) {
 	slog.InfoContext(ctx, "Found objects to upload", "len", len(objectsToUpload))
 
 	if !in.DryRun {
+		var mu sync.Mutex
 		for _, v := range objectsToUpload {
-			if err := uploadObject(ctx, in, v.name); err != nil {
-				return nil, fmt.Errorf("upload %q: %w", v.name, err)
+			if err := uploadObject(ctx, in, v); err != nil {
+				return nil, fmt.Errorf("upload %q: %w", v.Name, err)
 			}
+
+			mu.Lock()
+			metadataStore.Metadata[makeS3Key(in.Path, in.OutPrefix, v.Name)] = &Metadata{
+				Hash: v.Hash,
+			}
+			mu.Unlock()
 		}
 	}
 
@@ -182,14 +188,15 @@ func saveMetadataStore(ctx context.Context, in *RunInput, s *MetadataStore) erro
 	return nil
 }
 
-func uploadObject(ctx context.Context, in *RunInput, object string) error {
+func uploadObject(ctx context.Context, in *RunInput, object ObjectToUpload) error {
 	slog.InfoContext(ctx, "Zipping", "object", object)
-	r := Zip(filepath.Join(in.Path, object))
+	r := Zip(filepath.Join(in.Path, object.Name))
 	defer r.Close()
 
+	key := makeS3Key(in.Path, in.OutPrefix, object.Name)
 	upIn := &s3manager.UploadInput{
 		Bucket:       &in.S3Bucket,
-		Key:          aws.String(makeS3Key(in.Path, in.OutPrefix, object)),
+		Key:          aws.String(key),
 		Body:         r,
 		ContentType:  aws.String("application/zip"),
 		StorageClass: &in.S3StorageClass,
@@ -200,6 +207,7 @@ func uploadObject(ctx context.Context, in *RunInput, object string) error {
 		return fmt.Errorf("upload to s3: %w", err)
 	}
 	slog.InfoContext(ctx, "Uploaded", "object", object, "s3-key", *upIn.Key)
+
 	return nil
 }
 
