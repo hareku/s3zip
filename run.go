@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -279,7 +280,7 @@ func (c *runClient) cleanUnusedObjects(ctx context.Context, objects []string) (i
 	dels := make([]*s3.ObjectIdentifier, 0)
 	err := c.s3Service.ListObjectsV2PagesWithContext(ctx, &s3.ListObjectsV2Input{
 		Bucket: &c.s3Bucket,
-		Prefix: &c.outPrefix,
+		Prefix: aws.String(strings.TrimSuffix(c.outPrefix, "/") + "/"),
 	}, func(page *s3.ListObjectsV2Output, lastPage bool) bool {
 		for _, obj := range page.Contents {
 			if _, ok := mp[*obj.Key]; !ok {
