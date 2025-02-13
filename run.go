@@ -294,46 +294,50 @@ func (c *runClient) uploadObject(ctx context.Context, v ObjectToUpload) error {
 	return nil
 }
 
-func (c *runClient) cleanUnusedObjects(ctx context.Context, objects []string) (int, error) {
-	mp := make(map[string]struct{})
-	for _, v := range objects {
-		mp[makeS3Key(c.path, c.outPrefix, v)] = struct{}{}
+func (c *runClient) cleanUnusedObjects(ctx context.Context, localObjects []string) (int, error) {
+	local := make(map[string]struct{})
+	for _, v := range localObjects {
+		local[makeS3Key(c.path, c.outPrefix, v)] = struct{}{}
 	}
 
-	dels := make([]*s3.ObjectIdentifier, 0)
+	targets := make([]*s3.ObjectIdentifier, 0)
 	err := c.s3Service.ListObjectsV2PagesWithContext(ctx, &s3.ListObjectsV2Input{
 		Bucket: &c.s3Bucket,
 		Prefix: aws.String(strings.TrimSuffix(c.outPrefix, "/") + "/"),
 	}, func(page *s3.ListObjectsV2Output, lastPage bool) bool {
 		for _, obj := range page.Contents {
-			if _, ok := mp[*obj.Key]; !ok {
-				slog.InfoContext(ctx, "Deleting", "s3-key", *obj.Key)
-				dels = append(dels, &s3.ObjectIdentifier{
-					Key: obj.Key,
-				})
+			if _, ok := local[*obj.Key]; ok {
+				continue
 			}
+
+			slog.InfoContext(ctx, "Deleting", "s3-key", *obj.Key)
+			targets = append(targets, &s3.ObjectIdentifier{
+				Key: obj.Key,
+			})
 		}
 		return lastPage
 	})
 	if err != nil {
 		return 0, fmt.Errorf("list objects: %w", err)
 	}
-	if len(dels) == 0 {
+
+	if len(targets) == 0 {
 		return 0, nil
 	}
+
 	if !c.dryRun {
 		_, err = c.s3Service.DeleteObjectsWithContext(ctx, &s3.DeleteObjectsInput{
 			Bucket: &c.s3Bucket,
 			Delete: &s3.Delete{
-				Objects: dels,
+				Objects: targets,
 			},
 		})
 		if err != nil {
 			return 0, fmt.Errorf("delete objects: %w", err)
 		}
-		slog.InfoContext(ctx, "Deleted objects", "len", len(dels))
+		slog.InfoContext(ctx, "Deleted objects", "len", len(targets))
 	}
-	return len(dels), nil
+	return len(targets), nil
 }
 
 func makeS3Key(localPath, outPrefix, object string) string {
