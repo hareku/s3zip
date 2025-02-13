@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 )
 
-// Zip returns an uncompressed zip file of the given directory or file.
+// Zip creates a zip file from the given directory.
 func Zip(name string) io.ReadCloser {
 	pr, pw := io.Pipe()
 	go func() {
@@ -33,7 +33,7 @@ func Zip(name string) io.ReadCloser {
 
 			zw2, err := zw.CreateHeader(&zip.FileHeader{
 				Name:   filepath.ToSlash(rel),
-				Method: zip.Store,
+				Method: zip.Deflate,
 			})
 			if err != nil {
 				return fmt.Errorf("create zip file: %w", err)
