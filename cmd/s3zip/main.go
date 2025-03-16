@@ -16,9 +16,10 @@ import (
 )
 
 var (
-	configFlag = flag.String("config", "", "config file path")
-	dryFlag    = flag.Bool("dry", false, "dry run")
-	debugFlag  = flag.Bool("debug", false, "debug mode")
+	configFlag      = flag.String("config", "", "config file path")
+	dryFlag         = flag.Bool("dry", false, "dry run")
+	debugFlag       = flag.Bool("debug", false, "debug mode")
+	concurrencyFlag = flag.Int("concurrency", s3zip.DefaultConcurrency, "concurrency")
 )
 
 var (
@@ -83,6 +84,7 @@ func run() error {
 			Path:             t.Path,
 			MaxZipDepth:      t.MaxZipDepth,
 			OutPrefix:        t.OutPrefix,
+			Concurrency:      *concurrencyFlag,
 		})
 		if err != nil {
 			return fmt.Errorf("run: %w", err)

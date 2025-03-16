@@ -24,7 +24,7 @@ import (
 
 const (
 	DefaultMetadataStoreKey = "s3zip-metadata.pb"
-	DefaultConcurrency      = 10
+	DefaultConcurrency      = 1
 )
 
 type (
@@ -37,6 +37,7 @@ type (
 		MaxZipDepth      int
 		OutPrefix        string
 		S3StorageClass   string
+		Concurrency      int
 	}
 
 	RunOutput struct {
@@ -89,11 +90,14 @@ func newRunClient(in *RunInput) *runClient {
 		maxZipDepth: in.MaxZipDepth,
 		outPrefix:   in.OutPrefix,
 
-		concurrency: DefaultConcurrency,
+		concurrency: in.Concurrency,
 	}
 
 	if c.metadataStoreKey == "" {
 		c.metadataStoreKey = DefaultMetadataStoreKey
+	}
+	if c.concurrency == 0 {
+		c.concurrency = DefaultConcurrency
 	}
 
 	return &c
